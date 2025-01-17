@@ -5,8 +5,11 @@ import folium
 import plotly.graph_objs as go
 from plotly.utils import PlotlyJSONEncoder
 import json
+import requests
+from bs4 import BeautifulSoup
 
 app = Flask(__name__)
+
 
 # Load the model and vectorizer
 with open('civil_unrest_model.pkl', 'rb') as model_file:
@@ -61,14 +64,35 @@ def predict():
     if not link:
         return jsonify({'error': 'No link provided'}), 400
 
-    # Here you would fetch the content of the link, preprocess, and predict
-    # For demonstration, we'll use dummy data
-    text = "Example text fetched from the link."
+    # Fetch the content from the link using requests
+    try:
+        response = requests.get(link)
+        response.raise_for_status()  # Raise an exception for bad responses (4xx, 5xx)
+    except requests.exceptions.RequestException as e:
+        return jsonify({'error': f'Error fetching the link: {str(e)}'}), 400
+
+    # Use BeautifulSoup to parse the HTML content and extract the main text
+    soup = BeautifulSoup(response.content, 'html.parser')
+    paragraphs = soup.find_all('p')
+    text = ' '.join([para.get_text() for para in paragraphs])  # Extract all paragraph text
+
+    if not text:
+        return jsonify({'error': 'No text found on the provided link'}), 400
+
+    # Vectorize the extracted text
     vectorized_data = vectorizer.transform([text])
+
+    # Predict whether the content indicates civil unrest or not
     prediction = model.predict(vectorized_data)[0]
 
-    return jsonify({'prediction': prediction})
+    # Return the result as a JSON response
+    if prediction == 1:
+        result = "Civil Unrest"
+    else:
+        result = "No Civil Unrest"
+
+    return jsonify({'prediction': result})
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     app.run(debug=True)
